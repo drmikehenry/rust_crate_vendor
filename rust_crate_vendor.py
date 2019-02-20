@@ -12,7 +12,7 @@ import tarfile
 from pathlib import Path
 from typing import Dict
 
-__version__ = '0.1.0'
+__version__ = '0.1.1'
 
 prog_name = os.path.basename(sys.argv[0])
 
@@ -43,7 +43,7 @@ def die(message: str) -> None:
 
 
 def hash_file(path: Path) -> str:
-    with open(path, 'rb') as f:
+    with open(str(path), 'rb') as f:
         hash = hashlib.sha256(f.read()).hexdigest()
     return hash
 
@@ -57,24 +57,24 @@ def expand_crate(
             info('skipping existing crate {}'.format(crate_path.stem))
             return
         info('overwriting existing crate {}'.format(crate_path.stem))
-        shutil.rmtree(dest_path)
+        shutil.rmtree(str(dest_path))
     else:
         info('expanding crate {}'.format(crate_path.stem))
-    with tarfile.open(crate_path, 'r:gz') as tar_f:
-        files_meta_data: Dict[str, str] = {}
+    with tarfile.open(str(crate_path), 'r:gz') as tar_f:
+        files_meta_data = {}  # type: Dict[str, str]
         meta_data = {
             'package': hash_file(crate_path),
             'files': files_meta_data,
         }
         for tar_info in tar_f:
-            tar_f.extract(tar_info, vendor_path)
+            tar_f.extract(tar_info, str(vendor_path))
             if tar_info.isreg():
                 file_path = vendor_path.joinpath(tar_info.name)
                 rel_path = file_path.relative_to(dest_path)
                 files_meta_data[str(rel_path)] = hash_file(file_path)
 
         meta_path = dest_path.joinpath('.cargo-checksum.json')
-        with open(meta_path, 'w') as f:
+        with open(str(meta_path), 'w') as f:
             meta_json = json.dumps(meta_data, sort_keys=True, indent=2) + '\n'
             debug('meta_data for {}'.format(meta_path))
             debug(meta_json)
