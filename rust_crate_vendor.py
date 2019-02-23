@@ -10,9 +10,9 @@ import shutil
 import sys
 import tarfile
 from pathlib import Path
-from typing import Dict
+from typing import List
 
-__version__ = '0.1.2'
+__version__ = '0.1.3'
 
 prog_name = os.path.basename(sys.argv[0])
 
@@ -28,7 +28,9 @@ Example: Expand a directory of .crate files::
   $ mkdir vendor.crates
   $ cp *.crate vendor.crates
   $ {prog_name}  vendor.crates vendor
-""".format(prog_name=prog_name)
+""".format(
+    prog_name=prog_name
+)
 
 logging.getLogger().addHandler(logging.StreamHandler(sys.stdout))
 
@@ -42,16 +44,28 @@ def die(message: str) -> None:
     sys.exit(1)
 
 
-def hash_file(path: Path) -> str:
+def make_checksum(path: Path) -> str:
     with open(str(path), 'rb') as f:
         hash = hashlib.sha256(f.read()).hexdigest()
     return hash
 
 
-def expand_crate(
-    crate_path: Path, vendor_path: Path, force: bool
-) -> None:
-    dest_path = vendor_path.joinpath(crate_path.stem)
+def tar_extract_files(tar_path: Path, dest_root: Path) -> List[Path]:
+    """Extract gzipped tar bilf tar_path into destination directory dest_root.
+
+    Return Paths of extracted files.
+    """
+    file_paths = []
+    with tarfile.open(str(tar_path), 'r:gz') as tar_f:
+        for tar_info in tar_f:
+            if tar_info.isfile():
+                tar_f.extract(tar_info, path=str(dest_root))
+                file_paths.append(dest_root / tar_info.name)
+    return file_paths
+
+
+def expand_crate(crate_path: Path, vendor_path: Path, force: bool) -> None:
+    dest_path = vendor_path / crate_path.stem
     if dest_path.exists():
         if not force:
             debug('skipping existing crate {}'.format(crate_path.stem))
@@ -60,25 +74,24 @@ def expand_crate(
         shutil.rmtree(str(dest_path))
     else:
         info('expanding crate {}'.format(crate_path.stem))
-    with tarfile.open(str(crate_path), 'r:gz') as tar_f:
-        files_meta_data = {}  # type: Dict[str, str]
-        meta_data = {
-            'package': hash_file(crate_path),
-            'files': files_meta_data,
-        }
-        for tar_info in tar_f:
-            tar_f.extract(tar_info, str(vendor_path))
-            if tar_info.isreg():
-                file_path = vendor_path.joinpath(tar_info.name)
-                rel_path = file_path.relative_to(dest_path)
-                files_meta_data[str(rel_path)] = hash_file(file_path)
 
-        meta_path = dest_path.joinpath('.cargo-checksum.json')
-        with open(str(meta_path), 'w') as f:
-            meta_json = json.dumps(meta_data, sort_keys=True, indent=2) + '\n'
-            debug('meta_data for {}'.format(meta_path))
-            debug(meta_json)
-            f.write(meta_json)
+    file_paths = tar_extract_files(crate_path, vendor_path)
+
+    files_meta_data = {
+        str(p.relative_to(dest_path)): make_checksum(p) for p in file_paths
+    }
+
+    meta_data = {
+        'package': make_checksum(crate_path),
+        'files': files_meta_data,
+    }
+
+    meta_path = dest_path / '.cargo-checksum.json'
+    with open(str(meta_path), 'w') as f:
+        meta_json = json.dumps(meta_data, sort_keys=True, indent=2) + '\n'
+        debug('meta_data for {}'.format(meta_path))
+        debug(meta_json)
+        f.write(meta_json)
 
 
 def main() -> None:
@@ -144,8 +157,11 @@ def main() -> None:
             expand_crate(path, vendor_path, force=args.force)
 
     else:
-        die('SOURCE {} must be a single .crate or a directory of crates'
-            .format(source_path))
+        die(
+            'SOURCE {} must be a single crate or a directory of crates'.format(
+                source_path
+            )
+        )
 
 
 if __name__ == '__main__':
