@@ -12,7 +12,7 @@ import tarfile
 from pathlib import Path
 from typing import Dict
 
-__version__ = '0.1.1'
+__version__ = '0.1.2'
 
 prog_name = os.path.basename(sys.argv[0])
 
@@ -54,7 +54,7 @@ def expand_crate(
     dest_path = vendor_path.joinpath(crate_path.stem)
     if dest_path.exists():
         if not force:
-            info('skipping existing crate {}'.format(crate_path.stem))
+            debug('skipping existing crate {}'.format(crate_path.stem))
             return
         info('overwriting existing crate {}'.format(crate_path.stem))
         shutil.rmtree(str(dest_path))
